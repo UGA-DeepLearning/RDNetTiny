@@ -157,3 +157,4 @@ dmypy.json
 cython_debug/
 *.pth
 rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth
+data.cifar10/
