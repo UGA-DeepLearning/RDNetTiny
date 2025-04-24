@@ -1,31 +1,36 @@
+# Standard library imports
 import os
 import random
+import re
+from functools import partial
+from typing import List
+
+import math
+
 import numpy as np
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, classification_report
-from torch.utils.data import DataLoader, random_split
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingWarmRestarts
 
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+
+from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingWarmRestarts
+from torch.utils.data import DataLoader, random_split
 from torchvision import transforms, datasets
 from torchvision.datasets import CIFAR10, ImageFolder
 import torchvision.transforms.v2 as v2
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, InterpolationMode
 
-import re
-
-
-from functools import partial
-from typing import List
-
-import torch
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.layers.squeeze_excite import EffectiveSEModule
+from timm.layers import DropPath, EffectiveSEModule, LayerNorm2d
 from timm.models import register_model, build_model_with_cfg, named_apply, generate_default_cfgs
-from timm.layers import DropPath
-from timm.layers import LayerNorm2d
 import timm
+
+from rdnet import RDNet
 
 if torch.mps.is_available():
     device = 'mps'
@@ -123,7 +128,7 @@ __all__ = ["RDNet"]
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 
-from rdnet import RDNet
+
 
 rdnet_tiny_cfg = {
     "url": "",  # optional: local path to weights if needed
@@ -185,8 +190,6 @@ def evaluate(model, dataloader, device):
     epoch_loss = running_loss / total
     epoch_acc = 100.0 * correct / total
     return epoch_loss, epoch_acc
-
-import math
 
 
 def train_rdnet_tiny(model, train_loader, val_loader, test_loader, device, num_epochs=20, 
@@ -379,7 +382,7 @@ checkpoint.keys()
 model.load_state_dict(checkpoint["model_state_dict"])
 model.to(device)
 
-device = "cpu"
+# device = "cpu"
 model.eval()
 model.to(device)
 inputs, targets = next(iter(val_loader))
@@ -389,11 +392,8 @@ _, preds = outputs.max(1)
 
 print("Predictions:", preds[:10])
 print("Targets:    ", targets[:10])
-device = "cuda"
+# device = "cuda"
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import f1_score, classification_report, confusion_matrix
 def evaluate_model(model, test_loader, device, class_names=None):
     model.eval()
     model.to(device)
