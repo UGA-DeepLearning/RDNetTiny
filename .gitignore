@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 /ideas
-
+.DS_Store
 populate_movies.py
 # C extensions
 *.so
