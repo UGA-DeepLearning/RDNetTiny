@@ -93,9 +93,19 @@ print(f"Model size before quantization: {model_size_before_quantization:.2f} MB"
 model = rdnet_tiny(pretrained=False, num_classes=10)
 
 # 2. Quantize it the same way you did before
-model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+from torch.ao.quantization import QConfig
+import torch.nn.quantized as nnq
+
+# Create a per-tensor qconfig
+per_tensor_qconfig = torch.quantization.QConfig(
+    activation=torch.quantization.default_observer,
+    weight=torch.quantization.default_weight_observer  # <-- per-tensor weight observer
+)
+model.qconfig = per_tensor_qconfig
 torch.quantization.prepare(model, inplace=True)
 torch.quantization.convert(model, inplace=True)
+# torch.quantization.prepare(model, inplace=True)
+# torch.quantization.convert(model, inplace=True)
 
 # 3. Load the quantized weights
 path_to_quantized_model = "model_after_quantization.pth"
