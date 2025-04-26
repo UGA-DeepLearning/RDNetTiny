@@ -8,7 +8,7 @@ from timm import create_model
 model = create_model("rdnet_tiny", pretrained=False, num_classes=10)
 
 # Step 2: Load checkpoint
-checkpoint = torch.load('rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth', map_location='cpu')
+checkpoint = torch.load('rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth')
 
 # Step 3: Extract only the model weights
 state_dict = checkpoint['model_state_dict']
