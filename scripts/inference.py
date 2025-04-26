@@ -89,9 +89,15 @@ print(f"Model size before quantization: {model_size_before_quantization:.2f} MB"
 
 # --- Quantization ---
 # Apply quantization
-model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
-torch.quantization.prepare(model, inplace=True)
-torch.quantization.convert(model, inplace=True)
+# 1. Set quantization config
+model.qconfig = tq.get_default_qconfig('fbgemm')
+
+# 2. Prepare the model
+model = torch.quantization.quantize_dynamic(
+    model,             # your trained model
+    {torch.nn.Linear}, # layers to quantize (you can add more)
+    dtype=torch.qint8  # use 8-bit integers
+)
 
 # Testing accuracy after quantization
 model.eval()
