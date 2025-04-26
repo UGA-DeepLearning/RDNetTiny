@@ -88,37 +88,48 @@ print(f"Model size before quantization: {model_size_before_quantization:.2f} MB"
 
 
 # --- Quantization ---
-# Apply quantization
+# # Apply quantization
+# 1. Create a fresh model
+model = rdnet_tiny(pretrained=False, num_classes=10)
+
+# 2. Quantize it the same way you did before
 model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
 torch.quantization.prepare(model, inplace=True)
 torch.quantization.convert(model, inplace=True)
 
-# Testing accuracy after quantization
-model.eval()
+# 3. Load the quantized weights
+path_to_quantized_model = "model_after_quantization.pth"
+checkpoint = torch.load(path_to_quantized_model, map_location=device, weights_only=False)
+model.load_state_dict(checkpoint)
+
+# 4. Move to device
 model.to(device)
+
+# 5. Set model to eval mode
+model.eval()
 
 # Save model size after quantization
 torch.save(model.state_dict(), "model_after_quantization.pth")
 model_size_after_quantization = os.path.getsize("model_after_quantization.pth") / (1024 ** 2)  # Convert to MB
 print(f"Model size after quantization: {model_size_after_quantization:.2f} MB")
 
-# # Measure accuracy after quantization
-# correct = 0
-# total = 0
+# Measure accuracy after quantization
+correct = 0
+total = 0
 
-# start_time = time.time()  # Start timing inference
-# with torch.no_grad():
-#     for images, labels in test_loader:
-#         images, labels = images.to(device), labels.to(device)
-#         outputs = model(images)
-#         predicted = torch.argmax(outputs, dim=1)
-#         correct += (predicted == labels).sum().item()
-#         total += labels.size(0)
-# end_time = time.time()  # End timing inference
+start_time = time.time()  # Start timing inference
+with torch.no_grad():
+    for images, labels in test_loader:
+        images, labels = images.to(device), labels.to(device)
+        outputs = model(images)
+        predicted = torch.argmax(outputs, dim=1)
+        correct += (predicted == labels).sum().item()
+        total += labels.size(0)
+end_time = time.time()  # End timing inference
 
-# time_after_quantization = end_time - start_time
-# accuracy_after_quantization = 100 * correct / total
-# print(f"Model accuracy after quantization: {accuracy_after_quantization:.2f}%")
-# print(f"Inference time after quantization: {time_after_quantization:.4f} seconds")
+time_after_quantization = end_time - start_time
+accuracy_after_quantization = 100 * correct / total
+print(f"Model accuracy after quantization: {accuracy_after_quantization:.2f}%")
+print(f"Inference time after quantization: {time_after_quantization:.4f} seconds")
 
 
