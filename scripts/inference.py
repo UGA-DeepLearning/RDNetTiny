@@ -86,6 +86,7 @@ torch.save(model.state_dict(), "model_before_quantization.pth")
 model_size_before_quantization = os.path.getsize("model_before_quantization.pth") / (1024 ** 2)  # Convert to MB
 print(f"Model size before quantization: {model_size_before_quantization:.2f} MB")
 
+import torch.quantization as tq
 
 # --- Quantization ---
 # Apply quantization
@@ -93,7 +94,7 @@ print(f"Model size before quantization: {model_size_before_quantization:.2f} MB"
 model.qconfig = tq.get_default_qconfig('fbgemm')
 
 # 2. Prepare the model
-model = torch.quantization.quantize_dynamic(
+model = tq.quantize_dynamic(
     model,             # your trained model
     {torch.nn.Linear}, # layers to quantize (you can add more)
     dtype=torch.qint8  # use 8-bit integers
