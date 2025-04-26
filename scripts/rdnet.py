@@ -302,3 +302,25 @@ def _init_weights(module, name=None, head_init_scale=1.0):
         if name and 'head.' in name:
             module.weight.data.mul_(head_init_scale)
             module.bias.data.mul_(head_init_scale)
+
+
+def rdnet_tiny(pretrained=False, num_classes=1000, checkpoint_path=None, device="cpu", **kwargs):
+    n_layer = 7
+    model_args = {
+        "num_init_features": 64,
+        "growth_rates": [64, 104, 128, 128, 128, 128, 224],
+        "num_blocks_list": [3] * n_layer,
+        "is_downsample_block": (None, True, True, False, False, False, True),
+        "transition_compression_ratio": 0.5,
+        "block_type": ["Block", "Block", "BlockESE", "BlockESE", "BlockESE", "BlockESE", "BlockESE"],
+        "num_classes": num_classes,
+    }
+
+    model = RDNet(**{**model_args, **kwargs})
+
+    if pretrained:
+        assert checkpoint_path is not None, "Please provide checkpoint_path for pretrained weights"
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        model.load_state_dict(state_dict, strict=False)
+
+    return model
