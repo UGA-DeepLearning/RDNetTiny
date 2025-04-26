@@ -8,7 +8,18 @@ from timm import create_model
 model = create_model("rdnet_tiny", pretrained=False, num_classes=10)
 
 # Step 2: Load checkpoint
-checkpoint = torch.load('/content/RDNetTiny/scripts/rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth', weights_only=True)
+import zipfile
+
+checkpoint_path = '/content/RDNetTiny/scripts/rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth'
+try:
+    with zipfile.ZipFile(checkpoint_path, 'r') as zip_ref:
+        zip_ref.testzip()  # Check for corruption
+    print("The checkpoint file is valid.")
+except zipfile.BadZipFile:
+    print("The checkpoint file is corrupted or invalid.")
+
+
+checkpoint = torch.load(checkpoint_path)
 
 # Step 3: Extract only the model weights
 state_dict = checkpoint['model_state_dict']
