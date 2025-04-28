@@ -57,7 +57,7 @@ def measure_inference_time(model, input_tensor, num_runs=100):
     
     return (time.time() - start_time) / num_runs * 1000  # ms per inferenc
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
 print(f"Device: {device}")
 path_to_cifar10_weights = "rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth"
 model = quantizable_rdnet_tiny(pretrained=False, num_classes=10)
