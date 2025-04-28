@@ -81,9 +81,9 @@ quantized_model = torch.quantization.quantize_dynamic(
     dtype=torch.qint8,  # Quantize to 8-bit integers
 )
 
-# 3. Test inference (input remains float32)
-input_data = torch.rand(1, 3, 224, 224)  # Example float32 input
-output = quantized_model(input_data)  # Automatically handles quantization
+# # 3. Test inference (input remains float32)
+# input_data = torch.rand(1, 3, 224, 224)  # Example float32 input
+# output = quantized_model(input_data)  # Automatically handles quantization
 
 # 1. Create sample input data and test loader
 transform = transforms.Compose([
