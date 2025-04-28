@@ -12,6 +12,8 @@ from torchvision import transforms, datasets
 from torchvision.datasets import CIFAR10, ImageFolder
 import torchvision.transforms.v2 as v2
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, InterpolationMode
+from torchvision.transforms.functional import InterpolationMode
+
 
 import re
 
@@ -314,6 +316,103 @@ def rdnet_tiny(pretrained=False, num_classes=1000, checkpoint_path=None, device=
         "transition_compression_ratio": 0.5,
         "block_type": ["Block", "Block", "BlockESE", "BlockESE", "BlockESE", "BlockESE", "BlockESE"],
         "num_classes": num_classes,
+    }
+
+    model = RDNet(**{**model_args, **kwargs})
+
+    if pretrained:
+        assert checkpoint_path is not None, "Please provide checkpoint_path for pretrained weights"
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        model.load_state_dict(state_dict, strict=False)
+
+    return model
+
+import torch
+import torch.nn as nn
+from torch.quantization import QuantStub, DeQuantStub
+
+class QuantizableRDNetClassifierHead(nn.Module):
+    def __init__(self, in_features: int, num_classes: int, drop_rate: float = 0.):
+        super().__init__()
+        self.in_features = in_features
+        self.num_features = in_features
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+
+        self.norm = nn.LayerNorm(in_features)
+        self.drop = nn.Dropout(drop_rate)
+        self.fc = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+
+    def forward(self, x, pre_logits: bool = False):
+        x = x.mean([-2, -1])
+        x = self.quant(x)
+        x = self.norm(x)
+        x = self.drop(x)
+        x = self.dequant(x)
+        if pre_logits:
+            return x
+        x = self.fc(x)
+        return x
+
+class QuantizableBlock(nn.Module):
+    def __init__(self, in_chs, inter_chs, out_chs):
+        super().__init__()
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+        
+        self.layers = nn.Sequential(
+            nn.Conv2d(in_chs, in_chs, groups=in_chs, kernel_size=7, stride=1, padding=3),
+            nn.BatchNorm2d(in_chs),
+            nn.ReLU(),
+            nn.Conv2d(in_chs, inter_chs, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(inter_chs),
+            nn.ReLU(),
+            nn.Conv2d(inter_chs, out_chs, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(out_chs),
+        )
+
+    def forward(self, x):
+        x = self.quant(x)
+        x = self.layers(x)
+        x = self.dequant(x)
+        return x
+
+class QuantizableBlockESE(nn.Module):
+    def __init__(self, in_chs, inter_chs, out_chs):
+        super().__init__()
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+        
+        self.layers = nn.Sequential(
+            nn.Conv2d(in_chs, in_chs, groups=in_chs, kernel_size=7, stride=1, padding=3),
+            nn.BatchNorm2d(in_chs),
+            nn.ReLU(),
+            nn.Conv2d(in_chs, inter_chs, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(inter_chs),
+            nn.ReLU(),
+            nn.Conv2d(inter_chs, out_chs, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(out_chs),
+            EffectiveSEModule(out_chs),
+        )
+
+    def forward(self, x):
+        x = self.quant(x)
+        x = self.layers(x)
+        x = self.dequant(x)
+        return x
+
+def quantizable_rdnet_tiny(pretrained=False, num_classes=1000, checkpoint_path=None, device="cpu", **kwargs):
+    n_layer = 7
+    model_args = {
+        "num_init_features": 64,
+        "growth_rates": [64, 104, 128, 128, 128, 128, 224],
+        "num_blocks_list": [3] * n_layer,
+        "is_downsample_block": (None, True, True, False, False, False, True),
+        "transition_compression_ratio": 0.5,
+        "block_type": ["QuantizableBlock", "QuantizableBlock", "QuantizableBlockESE", 
+                      "QuantizableBlockESE", "QuantizableBlockESE", "QuantizableBlockESE", "QuantizableBlockESE"],
+        "num_classes": num_classes,
+        "head_class": QuantizableRDNetClassifierHead,
     }
 
     model = RDNet(**{**model_args, **kwargs})

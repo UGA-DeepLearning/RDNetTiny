@@ -1,38 +1,29 @@
 import torch
 import time
-from sklearn.metrics import accuracy_score
-from rdnet import rdnet_tiny
-from torch import nn
-from torchvision import datasets, transforms
-from rdnet_quantized import quantizable_rdnet_tiny
-from rdnet import rdnet_tiny
-import torch.quantization
 import os
-import time
-from torch.utils.data import DataLoader
+import numpy as np
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
-from torch.quantization import fuse_modules, prepare, convert
+from rdnet import rdnet_tiny, quantizable_rdnet_tiny, QuantizableBlock, QuantizableBlockESE 
+from torch import nn
+from torch.quantization import QuantStub, DeQuantStub
+  
 
-def fuse_model(model):
-    for name, module in model.named_children():
-        if isinstance(module, nn.Sequential):
-            modules_to_fuse = []
-            for idx in range(len(module) - 1):
-                if isinstance(module[idx], nn.Conv2d) and isinstance(module[idx+1], nn.BatchNorm2d):
-                    modules_to_fuse.append([str(idx), str(idx+1)])
-            if modules_to_fuse:
-                fuse_modules(module, modules_to_fuse, inplace=True)
-        else:
-            fuse_model(module)  # recursive
+def get_calibration_loader(train_dataset, batch_size=32, num_samples=512):
+    indices = np.random.choice(len(train_dataset), num_samples, replace=False)
+    subset = Subset(train_dataset, indices)
+    return DataLoader(subset, batch_size=batch_size, shuffle=False)
 
-def evaluate_model(model, test_loader, device='cpu'):
+def evaluate_model(model, test_loader, device='cpu', max_samples=None):
     correct = 0
     total = 0
     model.eval()
     model.to(device)
     
     with torch.no_grad():
-        for inputs, labels in test_loader:
+        for i, (inputs, labels) in enumerate(test_loader):
+            if max_samples is not None and i * test_loader.batch_size >= max_samples:
+                break
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             _, predicted = torch.max(outputs.data, 1)
@@ -47,138 +38,120 @@ def get_model_size(model):
     os.remove("temp.pth")
     return size_bytes / (1024 * 1024)  # Convert to MB
 
-def measure_inference_time(model, input_tensor, num_runs=100):
+def measure_inference_time(model, input_tensor, num_runs=100, warmup=10):
     model.eval()
-    start_time = time.time()
     
+    # Warmup
+    with torch.no_grad():
+        for _ in range(warmup):
+            _ = model(input_tensor)
+    
+    # Measure
+    start_time = time.time()
     with torch.no_grad():
         for _ in range(num_runs):
             _ = model(input_tensor)
     
-    return (time.time() - start_time) / num_runs * 1000  # ms per inferenc
+    return (time.time() - start_time) / num_runs * 1000  # ms per inference
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(f"Device: {device}")
-path_to_cifar10_weights = "rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth"
-model = quantizable_rdnet_tiny(pretrained=False, num_classes=10)
-checkpoint = torch.load(path_to_cifar10_weights, map_location=device, weights_only=False)
-model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-model.to(device)
-# 1. Define your model (assuming RDNet is already defined)
-# model = rdnet_tiny(num_classes=10, checkpoint_path='rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth')  # Your original model
-model.eval()  # Must be in eval mode for quantization
+def prepare_for_static_quantization(model, calibration_loader):
+    model.eval()
+    model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+    
+    # Fuse modules
+    for module in model.modules():
+        if isinstance(module, (QuantizableBlock, QuantizableBlockESE)):
+            torch.quantization.fuse_modules(module.layers, 
+                [['0', '1', '2'], ['3', '4', '5'], ['6', '7']], inplace=True)
+    
+    prepared_model = torch.quantization.prepare(model)
+    
+    # Calibrate
+    with torch.no_grad():
+        for inputs, _ in calibration_loader:
+            _ = prepared_model(inputs.to('cpu'))
+    
+    return prepared_model
 
+def main():
+    # Setup data loaders
+    transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
-fuse_model(model)
+    test_dataset = datasets.CIFAR10(
+        root='./data', 
+        train=False,
+        download=True, 
+        transform=transform
+    )
 
-# 2. Apply dynamic quantization to the whole model
-quantized_model = torch.quantization.quantize_dynamic(
-    model,  # Original model
-    qconfig_spec={
-        torch.nn.Linear,  # Quantize Linear layers
-        torch.nn.Conv2d,  # Quantize Conv2d layers
-    },
-    dtype=torch.qint8,  # Quantize to 8-bit integers
-)
+    train_dataset = datasets.CIFAR10(
+        root='./data', 
+        train=True,
+        download=True, 
+        transform=transform
+    )
 
-# # 3. Test inference (input remains float32)
-# input_data = torch.rand(1, 3, 224, 224)  # Example float32 input
-# output = quantized_model(input_data)  # Automatically handles quantization
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    calibration_loader = get_calibration_loader(train_dataset)
 
-# 1. Create sample input data and test loader
-transform = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+    # Load models
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    checkpoint_path = "rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth"
 
-# Using CIFAR-10 for testing (replace with your dataset)
-test_dataset = datasets.CIFAR10(
-    root='./data', 
-    train=False,
-    download=True, 
-    transform=transform
-)
+    # Original model
+    original_model = rdnet_tiny(pretrained=False, num_classes=10)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    original_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    original_model.to(device)
+    original_model.eval()
 
-# Using CIFAR-10 for testing (replace with your dataset)
-train_dataset = datasets.CIFAR10(
-    root='./data', 
-    train=True,
-    download=True, 
-    transform=transform
-)
+    # Quantizable model
+    quantizable_model = quantizable_rdnet_tiny(pretrained=False, num_classes=10)
+    quantizable_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    quantizable_model.to(device)
+    quantizable_model.eval()
 
-import torch.optim as optim
+    # Create test input
+    dummy_input = torch.randn(1, 3, 224, 224).to(device)
 
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=2)
+    # Benchmark original model
+    print("Benchmarking original model...")
+    original_acc = evaluate_model(original_model, test_loader, device, max_samples=1000)
+    original_size = get_model_size(original_model)
+    original_time = measure_inference_time(original_model, dummy_input)
 
+    # Dynamic quantization
+    print("\nApplying dynamic quantization...")
+    dynamic_model = torch.quantization.quantize_dynamic(
+        original_model,
+        {nn.Linear},
+        dtype=torch.qint8
+    )
+    dynamic_acc = evaluate_model(dynamic_model, test_loader, device, max_samples=1000)
+    dynamic_size = get_model_size(dynamic_model)
+    dynamic_time = measure_inference_time(dynamic_model, dummy_input)
 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(quantized_model.parameters(), lr=1e-3)
+    # Static quantization
+    print("\nApplying static quantization...")
+    static_model = quantizable_model.to('cpu')
+    prepared_model = prepare_for_static_quantization(static_model, calibration_loader)
+    static_model = torch.quantization.convert(prepared_model)
+    static_acc = evaluate_model(static_model, test_loader, 'cpu', max_samples=1000)
+    static_size = get_model_size(static_model)
+    static_time = measure_inference_time(static_model, dummy_input.to('cpu'))
 
-# Save function
-def save_model(model, filename="quantized_rdnet.pth"):
-    torch.save(model.state_dict(), filename)
-    print(f"✅ Model saved to {filename}")
+    # Print results
+    print("\nResults:")
+    print(f"{'Metric':<20} | {'Original':>10} | {'Dynamic Q':>10} | {'Static Q':>10}")
+    print("-" * 50)
+    print(f"{'Accuracy (%)':<20} | {original_acc:>10.2f} | {dynamic_acc:>10.2f} | {static_acc:>10.2f}")
+    print(f"{'Size (MB)':<20} | {original_size:>10.2f} | {dynamic_size:>10.2f} | {static_size:>10.2f}")
+    print(f"{'Latency (ms)':<20} | {original_time:>10.2f} | {dynamic_time:>10.2f} | {static_time:>10.2f}")
 
-# --- Training Loop ---
-num_epochs = 5
-save_path = "./quantized_rdnet.pth"
-
-try:
-    for epoch in range(num_epochs):
-        quantized_model.train()
-        running_loss = 0.0
-        for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)
-
-            optimizer.zero_grad()
-            outputs = quantized_model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            
-            if batch_idx % 10 == 0:
-                print(f"[Epoch {epoch+1}/{num_epochs}] [Batch {batch_idx}/{len(train_loader)}] Loss: {loss.item():.4f}")
-
-        print(f"Epoch {epoch+1} completed. Avg Loss: {running_loss/len(train_loader):.4f}")
-
-except KeyboardInterrupt:
-    print("\n⛔ Training interrupted. Saving model...")
-    save_model(quantized_model, save_path)
-
-# Final Save
-save_model(quantized_model, save_path)
-print('🏁 Training Finished')
-
-# # 3. Create test input tensor
-# dummy_input = torch.randn(1, 3, 224, 224)  # Batch of 1, 3 channels, 224x224
-
-# # 4. Evaluate original model
-# original_acc = evaluate_model(model, test_loader)
-# original_size = get_model_size(model)
-# original_time = measure_inference_time(model, dummy_input)
-
-# # 5. Evaluate quantized model
-# quantized_acc = evaluate_model(quantized_model, test_loader)
-# quantized_size = get_model_size(quantized_model)
-# quantized_time = measure_inference_time(quantized_model, dummy_input)
-
-# # 6. Final comparison printout
-# print("\n" + "="*60)
-# print(f"{'Metric':<20} | {'Original':>12} | {'Quantized':>12} | {'Change':>12}")
-# print("="*60)
-# print(f"{'Accuracy (%)':<20} | {original_acc:>12.2f} | {quantized_acc:>12.2f} | {quantized_acc-original_acc:>+12.2f}")
-# print(f"{'Size (MB)':<20} | {original_size:>12.2f} | {quantized_size:>12.2f} | {(quantized_size-original_size):>+12.2f}")
-# print(f"{'Inference (ms)':<20} | {original_time:>12.2f} | {quantized_time:>12.2f} | {(original_time/quantized_time):>12.2f}x")
-# print("="*60 + "\n")
-
-# # 7. Additional debug info
-# print("Sample input shape:", dummy_input.shape)
-# print("Test dataset size:", len(test_dataset))
-# print("Quantized model layer types:", 
-#       set(type(m) for m in quantized_model.modules()))
+if __name__ == "__main__":
+    main()
