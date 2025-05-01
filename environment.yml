@@ -1,14 +1,10 @@
-name: rdnettiny-env
+name: deck-env
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
-  - numpy
-  - pytorch
-  - torchvision
-  - scikit-learn
-  - onnxruntime
-  - pip
+  - python=3.12  # Specify Python version
+  - numpy        # Conda manages system-level packages like numpy
+  - pip           # Install pip inside the environment
   - pip:
-      - timm
+      - -r file:requirements.txt  # Install Python packages via pip from requirements.txt
