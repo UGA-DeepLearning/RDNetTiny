@@ -1,0 +1,14 @@
+name: rdnettiny-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy
+  - pytorch
+  - torchvision
+  - scikit-learn
+  - onnxruntime
+  - pip
+  - pip:
+      - timm
