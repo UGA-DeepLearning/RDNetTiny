@@ -7,7 +7,8 @@ import numpy as np
 import time
 import os
 import csv
-import timm  # assumes rdnet_tiny is available in timm
+import timm 
+from rdnet import rdnet_tiny
 
 # Define dataset and transforms
 transform = transforms.Compose([
