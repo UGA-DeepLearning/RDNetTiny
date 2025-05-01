@@ -7,4 +7,8 @@ dependencies:
   - numpy        # Conda manages system-level packages like numpy
   - pip           # Install pip inside the environment
   - pip:
-      - -r file:requirements.txt  # Install Python packages via pip from requirements.txt
+      - onnxruntime
+      - torch
+      - torchvision
+      - scikit-learn
+      - timm

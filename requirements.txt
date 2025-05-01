@@ -1,5 +1,0 @@
-onnxruntime
-torch
-torchvision
-scikit-learn
-timm
