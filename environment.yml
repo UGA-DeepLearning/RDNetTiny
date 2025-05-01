@@ -1,4 +1,4 @@
-name: deck-env
+name: rdnet-env
 channels:
   - conda-forge
   - defaults
