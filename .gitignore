@@ -163,3 +163,4 @@ rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth.zip
 Kaggle Notebook Editor.html/scripts/data
 /scripts/data
 /data
+*.html
