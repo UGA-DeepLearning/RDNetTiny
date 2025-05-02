@@ -1,19 +1,5 @@
-import os
-import random
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from sklearn.metrics import accuracy_score, classification_report
-from torch.utils.data import DataLoader, random_split
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingWarmRestarts
-
-from torchvision import transforms, datasets
-from torchvision.datasets import CIFAR10, ImageFolder
-import torchvision.transforms.v2 as v2
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, InterpolationMode
-
-import re
 
 
 from functools import partial
@@ -22,10 +8,9 @@ from typing import List
 import torch
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers.squeeze_excite import EffectiveSEModule
-from timm.models import register_model, build_model_with_cfg, named_apply, generate_default_cfgs
+from timm.models import named_apply
 from timm.layers import DropPath
 from timm.layers import LayerNorm2d
-import timm
 
 class RDNetClassifierHead(nn.Module):
     def __init__(
