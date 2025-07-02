@@ -164,3 +164,13 @@ Kaggle Notebook Editor.html/scripts/data
 /scripts/data
 /data
 *.html
+
+TinyRDNetFineTune_loss.png
+TinyRDNetFineTune_accuracy.png
+rdnet_tiny_transfer_learn__valLoss0.1992_valAcc93.86.pth
+RDNet_Tiny_loss.png
+RDNet_Tiny_FineTune_loss.png
+RDNet_Tiny_FineTune_accuracy.png
+RDNet_Tiny_accuracy.png
+check.ipynb
+ModelResNet20Mod_(Unfrozen)_accuracy.png
